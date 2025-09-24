@@ -40,6 +40,12 @@ def parse_args():
 
     parser.add_argument('--run-name', default='CCTrans', help='run name for wandb interface/logging')
     parser.add_argument('--wandb', default=0, type=int, help='boolean to set wandb logging')
+    parser.add_argument('--scheduler', default='cosine', choices=['cosine', 'step', 'none'],
+                    help='LR scheduler type')
+    parser.add_argument('--step-size', type=int, default=50, help='Step size for StepLR')
+    parser.add_argument('--gamma', type=float, default=0.1, help='Decay rate for StepLR')
+    parser.add_argument('--eta-min', type=float, default=1e-8, help='Minimum LR for CosineAnnealingLR')
+
     
     args = parser.parse_args()
 

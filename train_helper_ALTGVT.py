@@ -125,6 +125,22 @@ class Trainer(object):
         self.optimizer = optim.AdamW(
             self.model.parameters(), lr=args.lr, weight_decay=args.weight_decay
         )
+        if args.scheduler == 'cosine':
+            self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+                self.optimizer,
+                T_max=args.max_epoch,
+                eta_min=args.eta_min
+            )
+        elif args.scheduler == 'step':
+            self.scheduler = torch.optim.lr_scheduler.StepLR(
+                self.optimizer,
+                step_size=args.step_size,
+                gamma=args.gamma
+            )
+        else:
+            self.scheduler = None
+
+
         self.start_epoch = 0
 
         # check if wandb has to log
@@ -241,6 +257,10 @@ class Trainer(object):
                 self.optimizer.zero_grad()
                 loss.backward()
                 self.optimizer.step()
+
+                if self.scheduler is not None:
+                    self.scheduler.step()
+
 
                 pred_count = (
                     torch.sum(outputs.view(N, -1),
