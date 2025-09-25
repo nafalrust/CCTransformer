@@ -85,38 +85,75 @@ def predict_image(img_path, model, device="cuda", crop_size=512, batch_size=4, w
                     print(f"🔥 Padding from {h_crop}x{w_crop} to {target_h}x{target_w}")
                     crops = F.pad(crops, (0, pad_w, 0, pad_h), mode="constant", value=0)
 
-                crop_pred, _ = model(crops)
+                density_map, normalized_density = model(crops)
+                # Gunakan density_map (bukan normalized) untuk counting yang akurat
+                crop_pred = density_map
 
-                # Model output resolution adalah input_size / 8 (karena 4 stage dengan stride 2 each)
-                # Tapi kita butuh crop ke ukuran asli sebelum padding
-                output_h = h_crop // 8
+                # Model menghasilkan density map dengan resolusi ~8x lebih kecil dari input
+                # crop_pred shape: [batch, 1, H/8, W/8] 
+                # Tapi karena ada padding, kita harus crop sesuai ukuran asli
+                
+                # Hitung ukuran output yang sesuai dengan input asli (sebelum padding)
+                output_h = h_crop // 8  # Downsampling factor ~8x
                 output_w = w_crop // 8
                 
-                # Crop prediction ke ukuran yang sesuai dengan input asli
-                crop_pred = crop_pred[:, :, :output_h, :output_w]
+                # Crop prediction ke ukuran yang sesuai dengan input asli (sebelum padding)
+                if crop_pred.size(2) > output_h or crop_pred.size(3) > output_w:
+                    crop_pred = crop_pred[:, :, :output_h, :output_w]
 
-                # Resize ke ukuran crop asli
-                crop_pred = F.interpolate(
-                    crop_pred, size=(h_crop, w_crop), mode='bilinear', align_corners=True
-                )
+                # JANGAN resize! Model sudah menghasilkan density map yang benar
+                # Density map resolution lebih rendah adalah normal untuk crowd counting
+                # Resize akan merusak density values dan membuat count tidak akurat
 
                 crop_preds.append(crop_pred)
 
         crop_preds = torch.cat(crop_preds, dim=0)
 
-        pred_map = torch.zeros([b, 1, h, w]).to(device)
+        # Density map memiliki resolusi lebih rendah (1/8 dari input)
+        pred_map_h, pred_map_w = h // 8, w // 8
+        pred_map = torch.zeros([b, 1, pred_map_h, pred_map_w]).to(device)
+        crop_masks_lowres = torch.zeros([b, 1, pred_map_h, pred_map_w]).to(device)
+        
         idx = 0
         for i in range(0, h, rh):
             gis, gie = max(min(h - rh, i), 0), min(h, i + rh)
             for j in range(0, w, rw):
                 gjs, gje = max(min(w - rw, j), 0), min(w, j + rw)
-                pred_map[:, :, gis:gie, gjs:gje] += crop_preds[idx]
+                
+                # Convert koordinat ke resolusi density map (1/8)
+                gis_low, gie_low = gis // 8, gie // 8
+                gjs_low, gje_low = gjs // 8, gje // 8
+                
+                # Pastikan tidak keluar batas
+                gis_low = max(0, min(gis_low, pred_map_h))
+                gie_low = max(0, min(gie_low, pred_map_h))
+                gjs_low = max(0, min(gjs_low, pred_map_w))  
+                gje_low = max(0, min(gje_low, pred_map_w))
+                
+                if gie_low > gis_low and gje_low > gjs_low:
+                    # Ambil sesuai ukuran area yang valid
+                    pred_h = gie_low - gis_low
+                    pred_w = gje_low - gjs_low
+                    
+                    pred_crop = crop_preds[idx][:, :, :pred_h, :pred_w]
+                    pred_map[:, :, gis_low:gie_low, gjs_low:gje_low] += pred_crop
+                    crop_masks_lowres[:, :, gis_low:gie_low, gjs_low:gje_low] += 1.0
+                
                 idx += 1
 
-        mask = crop_masks.sum(dim=0).unsqueeze(0)
+        # Normalisasi berdasarkan overlap
+        mask = crop_masks_lowres
+        mask[mask == 0] = 1.0  # Hindari pembagian dengan 0
         outputs = pred_map / mask
 
         count = outputs.sum().item()
+        
+        # Debug info
+        print(f"📊 Debug info:")
+        print(f"   - Density map size: {outputs.shape}")
+        print(f"   - Density map range: [{outputs.min().item():.6f}, {outputs.max().item():.6f}]")
+        print(f"   - Total count: {count:.2f}")
+        
         print(f"✅ Prediction complete. Count: {count:.2f}")
         return count
         
