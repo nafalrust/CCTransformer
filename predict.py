@@ -107,7 +107,24 @@ def predict_image(img_path, model, device="cuda", crop_size=512, batch_size=4, w
 
                 crop_preds.append(crop_pred)
 
-        crop_preds = torch.cat(crop_preds, dim=0)
+        # Pastikan semua crop_pred memiliki dimensi yang konsisten
+        for i, crop_pred in enumerate(crop_preds):
+            if len(crop_pred.shape) == 3:
+                # [batch*channels, H, W] -> [batch, channels, H, W]  
+                crop_preds[i] = crop_pred.unsqueeze(1)
+            elif len(crop_pred.shape) == 2:
+                # [H, W] -> [1, 1, H, W]
+                crop_preds[i] = crop_pred.unsqueeze(0).unsqueeze(0)
+        
+        print(f"📦 Processing {len(crop_preds)} crops for assembly...")
+        
+        # Sekarang concat seharusnya aman
+        if len(crop_preds) > 0:
+            crop_preds = torch.cat(crop_preds, dim=0)
+            print(f"� Final crop_preds shape: {crop_preds.shape}")
+        else:
+            print("❌ No crops to process!")
+            return 0
 
         # Density map memiliki resolusi lebih rendah (1/8 dari input)
         pred_map_h, pred_map_w = h // 8, w // 8
@@ -135,9 +152,23 @@ def predict_image(img_path, model, device="cuda", crop_size=512, batch_size=4, w
                     pred_h = gie_low - gis_low
                     pred_w = gje_low - gjs_low
                     
-                    pred_crop = crop_preds[idx][:, :, :pred_h, :pred_w]
-                    pred_map[:, :, gis_low:gie_low, gjs_low:gje_low] += pred_crop
-                    crop_masks_lowres[:, :, gis_low:gie_low, gjs_low:gje_low] += 1.0
+                    # Ambil crop yang sesuai dari tensor yang sudah di-concat
+                    # Setelah concat, crop_preds berbentuk [total_crops, channels, H, W]
+                    current_crop = crop_preds[idx]  # Shape: [channels, H, W] atau [1, H, W]
+                    
+                    # Pastikan kita punya 4D tensor [1, 1, H, W]
+                    while len(current_crop.shape) < 4:
+                        current_crop = current_crop.unsqueeze(0)
+                    
+                    # Sekarang slice dengan aman - ambil hanya 1 batch, 1 channel
+                    pred_crop = current_crop[:1, :1, :pred_h, :pred_w]
+                    
+                    # Pastikan ukuran cocok dengan target region
+                    if pred_crop.shape[2] == pred_h and pred_crop.shape[3] == pred_w:
+                        pred_map[:, :, gis_low:gie_low, gjs_low:gje_low] += pred_crop
+                        crop_masks_lowres[:, :, gis_low:gie_low, gjs_low:gje_low] += 1.0
+                    else:
+                        print(f"⚠️  Shape mismatch: pred_crop {pred_crop.shape} vs target ({pred_h}, {pred_w})")
                 
                 idx += 1
 
