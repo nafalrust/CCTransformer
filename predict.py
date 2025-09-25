@@ -43,32 +43,28 @@ def predict_image(img_path, model, device="cuda", crop_size=512, batch_size=4, w
 
     crop_preds = []
     with torch.no_grad():
-        nz = crop_imgs.size(0)
-        for i in range(0, nz, batch_size):
+        for i in range(0, crop_imgs.size(0), batch_size):
             crops = crop_imgs[i:i+batch_size]
-            _, _, hh, ww = crops.shape
 
-            # --- padding agar divisible dengan ws ---
-            pad_h = ( (hh + ws - 1) // ws ) * ws - hh
-            pad_w = ( (ww + ws - 1) // ws ) * ws - ww
+            # --- 🔥 padding biar kelipatan ws ---
+            _, _, h, w = crops.shape
+            pad_h = (ws - h % ws) % ws
+            pad_w = (ws - w % ws) % ws
             if pad_h > 0 or pad_w > 0:
-                crops_padded = F.pad(crops, (0, pad_w, 0, pad_h), mode="reflect")
-            else:
-                crops_padded = crops
+                crops = F.pad(crops, (0, pad_w, 0, pad_h), mode="constant", value=0)
 
-            out = model(crops_padded)
-            if isinstance(out, tuple):
-                crop_pred = out[0]
-            else:
-                crop_pred = out
+            crop_pred, _ = model(crops)
 
-            # --- buang padding hasil prediksi ---
-            crop_pred = crop_pred[:, :, :hh, :ww]
+            # balik ukuran hasil prediksi ke ukuran sebelum padding
+            crop_pred = crop_pred[:, :, :h, :w]
 
             _, _, h1, w1 = crop_pred.size()
-            crop_pred = F.interpolate(crop_pred, size=(h1*8, w1*8),
-                                      mode='bilinear', align_corners=True) / 64
+            crop_pred = F.interpolate(
+                crop_pred, size=(h1*8, w1*8), mode='bilinear', align_corners=True
+            ) / 64
+
             crop_preds.append(crop_pred)
+
 
     crop_preds = torch.cat(crop_preds, dim=0)
 
