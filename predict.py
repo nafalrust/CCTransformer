@@ -1,9 +1,9 @@
-import argparse
 import torch
 import torch.nn.functional as F
 import torchvision.transforms as transforms
 from PIL import Image
 import numpy as np
+import argparse
 import os
 import csv
 from Networks import ALTGVT
@@ -16,22 +16,19 @@ transform = transforms.Compose([
 ])
 
 def load_model(model_path, device="cuda"):
-    """Load pretrained ALTGVT model"""
-    model = ALTGVT.alt_gvt_large(pretrained=False)
+    model = ALTGVT.alt_gvt_large(pretrained=False)   # pretrained=False
     state_dict = torch.load(model_path, map_location=device)
-    model.load_state_dict(state_dict, strict=False)  # strict=False supaya fleksibel
+    model.load_state_dict(state_dict, strict=False)  # strict=False biar fleksibel
     model.to(device)
     model.eval()
     return model
 
-def predict_single_image(model, img_path, device="cuda", crop_size=512, batch_size=4):
-    """Prediksi untuk 1 gambar (patch-based inference)"""
+def predict_image(img_path, model, device="cuda", crop_size=512, batch_size=4, ws=8):
     img = Image.open(img_path).convert("RGB")
     img = transform(img).unsqueeze(0).to(device)
 
     b, c, h, w = img.size()
     rh, rw = crop_size, crop_size
-
     crop_imgs, crop_masks = [], []
     for i in range(0, h, rh):
         gis, gie = max(min(h - rh, i), 0), min(h, i + rh)
@@ -46,18 +43,31 @@ def predict_single_image(model, img_path, device="cuda", crop_size=512, batch_si
 
     crop_preds = []
     with torch.no_grad():
-        for i in range(0, crop_imgs.size(0), batch_size):
-            gs, gt = i, min(crop_imgs.size(0), i + batch_size)
-            out = model(crop_imgs[gs:gt])
-            crop_pred = out[0] if isinstance(out, tuple) else out
+        nz = crop_imgs.size(0)
+        for i in range(0, nz, batch_size):
+            crops = crop_imgs[i:i+batch_size]
+            _, _, hh, ww = crops.shape
+
+            # --- padding agar divisible dengan ws ---
+            pad_h = ( (hh + ws - 1) // ws ) * ws - hh
+            pad_w = ( (ww + ws - 1) // ws ) * ws - ww
+            if pad_h > 0 or pad_w > 0:
+                crops_padded = F.pad(crops, (0, pad_w, 0, pad_h), mode="reflect")
+            else:
+                crops_padded = crops
+
+            out = model(crops_padded)
+            if isinstance(out, tuple):
+                crop_pred = out[0]
+            else:
+                crop_pred = out
+
+            # --- buang padding hasil prediksi ---
+            crop_pred = crop_pred[:, :, :hh, :ww]
 
             _, _, h1, w1 = crop_pred.size()
-            crop_pred = F.interpolate(
-                crop_pred,
-                size=(h1 * 8, w1 * 8),
-                mode="bilinear",
-                align_corners=True
-            ) / 64
+            crop_pred = F.interpolate(crop_pred, size=(h1*8, w1*8),
+                                      mode='bilinear', align_corners=True) / 64
             crop_preds.append(crop_pred)
 
     crop_preds = torch.cat(crop_preds, dim=0)
@@ -74,22 +84,23 @@ def predict_single_image(model, img_path, device="cuda", crop_size=512, batch_si
     mask = crop_masks.sum(dim=0).unsqueeze(0)
     outputs = pred_map / mask
 
-    return torch.sum(outputs).item()
+    count = outputs.sum().item()
+    return count
 
-def main():
-    parser = argparse.ArgumentParser(description="Predict crowd counts with CCTrans (ALTGVT)")
-    parser.add_argument("--model-path", type=str, required=True, help="Path ke model .pth")
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model-path", type=str, required=True, help="Path model .pth")
     parser.add_argument("--input", type=str, required=True, help="Path gambar atau folder")
     parser.add_argument("--output-csv", type=str, default="predictions.csv", help="File CSV output")
-    parser.add_argument("--crop-size", type=int, default=512, help="Ukuran crop (harus kelipatan ws)")
-    parser.add_argument("--batch-size", type=int, default=4, help="Batch size untuk patch inference")
-    parser.add_argument("--device", default="cuda", help="Device (cuda/cpu)")
+    parser.add_argument("--crop-size", type=int, default=512)
+    parser.add_argument("--batch-size", type=int, default=4)
+    parser.add_argument("--ws", type=int, default=8, help="Window size ALTGVT (default=8)")
     args = parser.parse_args()
 
-    device = "cuda" if torch.cuda.is_available() and args.device == "cuda" else "cpu"
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     model = load_model(args.model_path, device)
 
-    # Ambil daftar file gambar
+    # Kumpulkan gambar
     if os.path.isdir(args.input):
         img_files = [os.path.join(args.input, f) for f in os.listdir(args.input)
                      if f.lower().endswith((".jpg", ".jpeg", ".png"))]
@@ -98,7 +109,7 @@ def main():
 
     results = []
     for img_path in img_files:
-        count = predict_single_image(model, img_path, device, args.crop_size, args.batch_size)
+        count = predict_image(img_path, model, device, args.crop_size, args.batch_size, args.ws)
         img_id = os.path.basename(img_path)
         results.append({"image_id": img_id, "predicted_count": round(count, 2)})
         print(f"{img_id} -> {count:.2f} orang")
@@ -110,8 +121,3 @@ def main():
         writer.writerows(results)
 
     print(f"\n✅ Predictions saved to {args.output_csv}")
-    print(f"Total test images: {len(results)}")
-    print(f"Average predicted count: {np.mean([r['predicted_count'] for r in results]):.2f}")
-
-if __name__ == "__main__":
-    main()
