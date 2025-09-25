@@ -16,9 +16,9 @@ transform = transforms.Compose([
 ])
 
 def load_model(model_path, device="cuda"):
-    model = ALTGVT.alt_gvt_large(pretrained=True)
+    model = ALTGVT.alt_gvt_large(pretrained=False)   # ubah: jangan pretrained=True
     state_dict = torch.load(model_path, map_location=device)
-    model.load_state_dict(state_dict)
+    model.load_state_dict(state_dict, strict=False)  # ubah: strict=False biar fleksibel
     model.to(device)
     model.eval()
     return model
@@ -44,7 +44,13 @@ def predict_image(img_path, model, device="cuda", crop_size=512):
     crop_preds = []
     with torch.no_grad():
         for i in range(0, crop_imgs.size(0), 4):
-            crop_pred, _ = model(crop_imgs[i:i+4])
+            # --- ubah: handle output model ---
+            out = model(crop_imgs[i:i+4])
+            if isinstance(out, tuple):
+                crop_pred = out[0]
+            else:
+                crop_pred = out
+
             _, _, h1, w1 = crop_pred.size()
             crop_pred = F.interpolate(crop_pred, size=(h1*8, w1*8),
                                       mode='bilinear', align_corners=True) / 64
