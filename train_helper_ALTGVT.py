@@ -10,7 +10,6 @@ from datetime import datetime
 import torch.nn.functional as F
 from datasets.crowd import Crowd_qnrf, Crowd_nwpu, Crowd_sh, CustomDataset
 
-# from models import vgg19
 from Networks import ALTGVT
 from losses.ot_loss import OT_Loss
 from utils.pytorch_utils import Save_Handle, AverageMeter
@@ -19,11 +18,10 @@ import wandb
 
 
 def train_collate(batch):
+    # Custom collate function for training data
     transposed_batch = list(zip(*batch))
     images = torch.stack(transposed_batch[0], 0)
-    points = transposed_batch[
-        1
-    ]  # the number of points is not fixed, keep it as a list of tensor
+    points = transposed_batch[1]
     gt_discretes = torch.stack(transposed_batch[2], 0)
     return images, points, gt_discretes
 
@@ -184,7 +182,7 @@ class Trainer(object):
         # self.best_count = 0
 
     def train(self):
-        """training process"""
+
         args = self.args
         for epoch in range(self.start_epoch, args.max_epoch + 1):
             self.logger.info(
@@ -363,7 +361,6 @@ class Trainer(object):
                         gjs, gje = max(min(w - rw, j), 0), min(w, j + rw)
                         pred_map[:, :, gis:gie, gjs:gje] += crop_preds[idx]
                         idx += 1
-                # for the overlapping area, compute average value
                 mask = crop_masks.sum(dim=0).unsqueeze(0)
                 outputs = pred_map / mask
 

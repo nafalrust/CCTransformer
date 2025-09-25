@@ -18,7 +18,7 @@ transform = transforms.Compose([
 ])
 
 def test_model_shapes():
-    """Test that the model can handle different input sizes with proper padding"""
+
     print("🧪 Testing model shape compatibility...")
     
     # Create model (without loading pretrained weights)
@@ -92,7 +92,7 @@ def test_model_shapes():
     return True
 
 def test_predict_function():
-    """Test the actual predict function with example images"""
+
     print("\n🧪 Testing predict function...")
     
     # Import after we know the shapes work

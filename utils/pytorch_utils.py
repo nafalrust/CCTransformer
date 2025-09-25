@@ -1,14 +1,12 @@
 import os
 
 def adjust_learning_rate(optimizer, epoch, initial_lr=0.001, decay_epoch=10):
-    """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
     lr = max(initial_lr * (0.1 ** (epoch // decay_epoch)), 1e-6)
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
 
 
 class Save_Handle(object):
-    """handle the number of """
     def __init__(self, max_num):
         self.save_list = []
         self.max_num = max_num
@@ -25,7 +23,6 @@ class Save_Handle(object):
 
 
 class AverageMeter(object):
-    """Computes and stores the average and current value"""
     def __init__(self):
         self.reset()
 

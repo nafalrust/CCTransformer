@@ -17,8 +17,5 @@ def get_logger(log_file):
 
 
 def print_config(config, logger):
-    """
-    Print configuration of the model
-    """
     for k, v in config.items():
         logger.info("{}:\t{}".format(k.ljust(15), v))

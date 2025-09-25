@@ -8,6 +8,7 @@ import cv2
 dir_name = os.path.dirname(os.path.abspath(__file__))
 
 def cal_new_size(im_h, im_w, min_size, max_size):
+    # Calculate new image size within constraints
     if im_h < im_w:
         if im_h < min_size:
             ratio = 1.0 * min_size / im_h
@@ -34,6 +35,7 @@ def cal_new_size(im_h, im_w, min_size, max_size):
 
 
 def generate_data(im_path, min_size, max_size):
+    # Process and resize image with annotations
     im = Image.open(im_path)
     im_w, im_h = im.size
     mat_path = im_path.replace('.jpg', '_ann.mat')

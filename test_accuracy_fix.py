@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-"""
-Test accuracy fix for predict.py - comparing with expected behavior
-"""
+# Test accuracy validation
 
 import torch
 import torch.nn.functional as F
@@ -9,7 +7,6 @@ from Networks import ALTGVT
 import numpy as np
 
 def test_density_map_processing():
-    """Test that density map processing gives reasonable results"""
     
     print("🧪 Testing density map processing accuracy...")
     
@@ -73,7 +70,7 @@ def test_density_map_processing():
                 print(f"   ⚠️  Normalized density sum: {norm_sum:.6f} (expected ~1.0)")
 
 def test_crop_assembly():
-    """Test that crop assembly works correctly with new density map handling"""
+
     
     print(f"\n🧪 Testing crop assembly logic...")
     

@@ -1,9 +1,4 @@
-# -*- coding: utf-8 -*-
-"""
-Rewrite ot.bregman.sinkhorn in Python Optimal Transport (https://pythonot.github.io/_modules/ot/bregman.html#sinkhorn)
-using pytorch operations.
-Bregman projections for regularized OT (Sinkhorn distance).
-"""
+# Sinkhorn algorithm implementation for PyTorch
 
 import torch
 
@@ -182,11 +177,7 @@ def sinkhorn_knopp(a, b, C, reg=1e-1, maxIter=1000, stopThr=1e-9,
             break
 
         if log and it % eval_freq == 0:
-            # we can speed up the process by checking for the error only all
-            # the eval_freq iterations
-            # below is equivalent to:
-            # b_hat = torch.sum(u.reshape(-1, 1) * K * v.reshape(1, -1), 0)
-            # but with more memory efficient
+
             b_hat = torch.matmul(u, K) * v
             err = (b - b_hat).pow(2).sum().item()
             # err = (b - b_hat).abs().sum().item()
@@ -291,15 +282,14 @@ def sinkhorn_stabilized(a, b, C, reg=1e-1, maxIter=1000, tau=1e3, stopThr=1e-9,
     v = torch.ones(nb, dtype=b.dtype).to(device) / nb
 
     def update_K(alpha, beta):
-        """log space computation"""
-        """memory efficient"""
+
         torch.add(alpha.reshape(-1, 1), beta.reshape(1, -1), out=K)
         torch.add(K, -C, out=K)
         torch.div(K, reg, out=K)
         torch.exp(K, out=K)
 
     def update_P(alpha, beta, u, v, ab_updated=False):
-        """log space P (gamma) computation"""
+
         torch.add(alpha.reshape(-1, 1), beta.reshape(1, -1), out=P)
         torch.add(P, -C, out=P)
         torch.div(P, reg, out=P)

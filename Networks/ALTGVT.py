@@ -1,8 +1,3 @@
-# _*_ coding: utf-8 _*_
-# @author   : 王福森
-# @time     : 2021/11/12 17:16
-# @File     : ALTGVT.py
-# @Software : PyCharm
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -15,11 +10,11 @@ from timm.models.vision_transformer import Block as TimmBlock
 from timm.models.vision_transformer import Attention as TimmAttention
 
 class Regression(nn.Module):
+    # Density regression head
     def __init__(self):
         super(Regression, self).__init__()
 
         self.v1 = nn.Sequential(
-            # nn.Upsample(scale_factor=8, mode='bilinear', align_corners=True),
             nn.Conv2d(256, 256, 3, padding=1, dilation=1),
             nn.BatchNorm2d(256),
             nn.ReLU(inplace=True)
@@ -110,9 +105,7 @@ class Mlp(nn.Module):
 
 
 class GroupAttention(nn.Module):
-    """
-    LSA: self attention within a group
-    """
+    # Local self attention within groups
     def __init__(self, dim, num_heads=8, qkv_bias=False, qk_scale=None, attn_drop=0., proj_drop=0., ws=1):
         assert ws != 1
         super(GroupAttention, self).__init__()
@@ -137,12 +130,10 @@ class GroupAttention(nn.Module):
         x = x.reshape(B, h_group, self.ws, w_group, self.ws, C).transpose(2, 3)
 
         qkv = self.qkv(x).reshape(B, total_groups, -1, 3, self.num_heads, C // self.num_heads).permute(3, 0, 1, 4, 2, 5)
-        # B, hw, ws*ws, 3, n_head, head_dim -> 3, B, hw, n_head, ws*ws, head_dim
-        q, k, v = qkv[0], qkv[1], qkv[2]  # B, hw, n_head, ws*ws, head_dim
-        attn = (q @ k.transpose(-2, -1)) * self.scale  # B, hw, n_head, ws*ws, ws*ws
+        q, k, v = qkv[0], qkv[1], qkv[2]
+        attn = (q @ k.transpose(-2, -1)) * self.scale
         attn = attn.softmax(dim=-1)
-        attn = self.attn_drop(
-            attn)  # attn @ v-> B, hw, n_head, ws*ws, head_dim -> (t(2,3)) B, hw, ws*ws, n_head,  head_dim
+        attn = self.attn_drop(attn)
         attn = (attn @ v).transpose(2, 3).reshape(B, h_group, w_group, self.ws, self.ws, C)
         x = attn.transpose(2, 3).reshape(B, N, C)
         x = self.proj(x)
@@ -151,9 +142,7 @@ class GroupAttention(nn.Module):
 
 
 class Attention(nn.Module):
-    """
-    GSA: using a  key to summarize the information for a group to be efficient.
-    """
+    # Global sparse attention
     def __init__(self, dim, num_heads=8, qkv_bias=False, qk_scale=None, attn_drop=0., proj_drop=0., sr_ratio=1):
         super().__init__()
         assert dim % num_heads == 0, f"dim {dim} should be divided by num_heads {num_heads}."
@@ -234,10 +223,6 @@ class GroupBlock(TimmBlock):
     def __init__(self, dim, num_heads, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop=0., attn_drop=0.,
                  drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm, sr_ratio=1, ws=1):
 
-        #super(GroupBlock, self).__init__(dim, num_heads, mlp_ratio, qkv_bias, qk_scale, drop, attn_drop,
-        #                                drop_path, act_layer, norm_layer)
-
-        #delete the qk_scale
         super(GroupBlock, self).__init__(dim, num_heads, mlp_ratio, qkv_bias, drop, attn_drop,
                                         drop_path, act_layer, norm_layer)
         del self.attn
@@ -254,9 +239,7 @@ class GroupBlock(TimmBlock):
 
 
 class PatchEmbed(nn.Module):
-    """ Image to Patch Embedding
-    """
-
+    # Convert image to patch embeddings
     def __init__(self, img_size=224, patch_size=16, in_chans=3, embed_dim=768):
         super().__init__()
         img_size = to_2tuple(img_size)
@@ -281,7 +264,6 @@ class PatchEmbed(nn.Module):
         return x, (H, W)
 
 
-# borrow from PVT https://github.com/whai362/PVT.git
 class PyramidVisionTransformer(nn.Module):
     def __init__(self, img_size=224, patch_size=16, in_chans=3, num_classes=1000, embed_dims=[64, 128, 256, 512],
                  num_heads=[1, 2, 4, 8], mlp_ratios=[4, 4, 4, 4], qkv_bias=False, qk_scale=None, drop_rate=0.,
@@ -291,7 +273,6 @@ class PyramidVisionTransformer(nn.Module):
         self.num_classes = num_classes
         self.depths = depths
 
-        # patch_embed
         self.patch_embeds = nn.ModuleList()
         self.pos_embeds = nn.ParameterList()
         self.pos_drops = nn.ModuleList()
@@ -308,7 +289,7 @@ class PyramidVisionTransformer(nn.Module):
             self.pos_embeds.append(nn.Parameter(torch.zeros(1, patch_num, embed_dims[i])))
             self.pos_drops.append(nn.Dropout(p=drop_rate))
 
-        dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]  # stochastic depth decay rule
+        dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]
         cur = 0
         for k in range(len(depths)):
             _block = nn.ModuleList([
@@ -324,13 +305,10 @@ class PyramidVisionTransformer(nn.Module):
 
         self.norm = norm_layer(embed_dims[-1])
 
-        # cls_token
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dims[-1]))
 
-        # classification head
         self.head = nn.Linear(embed_dims[-1], num_classes) if num_classes > 0 else nn.Identity()
 
-        # init weights
         for pos_emb in self.pos_embeds:
             trunc_normal_(pos_emb, std=.02)
         self.apply(self._init_weights)
@@ -386,7 +364,6 @@ class PyramidVisionTransformer(nn.Module):
         return x
 
 
-# PEG  from https://arxiv.org/abs/2102.10882
 class PosCNN(nn.Module):
     def __init__(self, in_chans, embed_dim=768, s=1):
         super(PosCNN, self).__init__()
@@ -409,12 +386,7 @@ class PosCNN(nn.Module):
 
 
 class CPVTV2(PyramidVisionTransformer):
-    """
-    Use useful results from CPVT. PEG and GAP.
-    Therefore, cls token is no longer required.
-    PEG is used to encode the absolute position on the fly, which greatly affects the performance when input resolution
-    changes during the training (such as segmentation, detection)
-    """
+    # Modified PVT with positional encoding
     def __init__(self, img_size=224, patch_size=4, in_chans=3, num_classes=1000, embed_dims=[64, 128, 256, 512],
                  num_heads=[1, 2, 4, 8], mlp_ratios=[4, 4, 4, 4], qkv_bias=False, qk_scale=None, drop_rate=0.,
                  attn_drop_rate=0., drop_path_rate=0., norm_layer=nn.LayerNorm,
@@ -491,9 +463,6 @@ class PCPVT(CPVTV2):
 
 
 class ALTGVT(PCPVT):
-    """
-    alias Twins-SVT
-    """
     def __init__(self, img_size=224, patch_size=4, in_chans=3, num_classes=1000, embed_dims=[64, 128, 256],
                  num_heads=[1, 2, 4], mlp_ratios=[4, 4, 4], qkv_bias=False, qk_scale=None, drop_rate=0.,
                  attn_drop_rate=0., drop_path_rate=0., norm_layer=nn.LayerNorm,
@@ -503,8 +472,7 @@ class ALTGVT(PCPVT):
                                      norm_layer, depths, sr_ratios, block_cls)
         del self.blocks
         self.wss = wss
-        # transformer encoder
-        dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]  # stochastic depth decay rule
+        dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]
         cur = 0
         self.blocks = nn.ModuleList()
         for k in range(len(depths)):
@@ -519,7 +487,6 @@ class ALTGVT(PCPVT):
 
 
 def _conv_filter(state_dict, patch_size=16):
-    """ convert patch embedding weight from manual patchify + linear proj to conv"""
     out_dict = {}
     for k, v in state_dict.items():
         if 'patch_embed.proj.weight' in k:

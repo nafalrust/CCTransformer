@@ -8,6 +8,7 @@ def str2bool(v):
 
 
 def parse_args():
+    # Setup training arguments
     parser = argparse.ArgumentParser(description='Train')
     parser.add_argument('--data-dir', default='/home/hdd/dataset_xzw/ShanghaiTech/part_A_final', help='data path')
     parser.add_argument('--dataset', default='sha', help='dataset name: qnrf, nwpu, sha, shb, custom')
@@ -49,6 +50,7 @@ def parse_args():
     
     args = parser.parse_args()
 
+    # Set dataset-specific parameters
     if args.dataset.lower() == 'qnrf':
         args.crop_size = 512
     elif args.dataset.lower() == 'nwpu':
@@ -68,7 +70,7 @@ def parse_args():
 if __name__ == '__main__':
     args = parse_args()
     torch.backends.cudnn.benchmark = True
-    os.environ['CUDA_VISIBLE_DEVICES'] = args.device.strip()  # set vis gpu
+    os.environ['CUDA_VISIBLE_DEVICES'] = args.device.strip()
     trainer = Trainer(args)
     trainer.setup()
     trainer.train()

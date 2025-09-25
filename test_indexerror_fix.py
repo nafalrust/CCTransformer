@@ -7,7 +7,7 @@ import torch
 import numpy as np
 
 def simulate_crop_assembly():
-    """Simulasi proses crop assembly untuk test IndexError fix"""
+
     
     print("🧪 Testing IndexError fix...")
     
@@ -81,7 +81,7 @@ def simulate_crop_assembly():
         return False
 
 def test_assembly_logic():
-    """Test the complete assembly logic"""
+
     
     print(f"\n🧪 Testing complete assembly logic...")
     

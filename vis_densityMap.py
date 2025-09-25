@@ -1,8 +1,4 @@
-# _*_ coding: utf-8 _*_
-# @author   : 王福森
-# @time     : 2021/12/3 20:54
-# @File     : vis_densityMap.py
-# @Software : PyCharm
+# Density map visualization tool
 from Networks import ALTGVT
 import numpy as np
 from torch.autograd import Variable
@@ -17,7 +13,7 @@ import torch.nn.functional as F
 import cv2
 
 def vis(args):
-    os.environ['CUDA_VISIBLE_DEVICES'] = args.device  # set vis gpu
+    os.environ['CUDA_VISIBLE_DEVICES'] = args.device
     device = torch.device('cuda')
 
     model_path = args.weight_path
@@ -63,11 +59,7 @@ def vis(args):
         st_size = 1.0 * min(wd, ht)
         image = image.resize((wd, ht), Image.BICUBIC)
 
-    # image = np.asarray(image, dtype=np.float32)
-    # if len(image.shape) == 2:  # expand grayscale image to three channel.
-    #     image = image[:, :, np.newaxis]
-    #     image = np.concatenate((image, image, image), 2)
-    # vis_img = image.copy()
+
 
     transform = transforms.Compose([
             transforms.ToTensor(),
@@ -78,7 +70,6 @@ def vis(args):
     gt_dmap = np.load(gt_dmap_path)
 
     with torch.no_grad():
-        # nputs = cal_new_tensor(inputs, min_size=args.crop_size)
         inputs = image.unsqueeze(0).to(device)
         crop_imgs, crop_masks = [], []
         b, c, h, w = inputs.size()
@@ -105,7 +96,6 @@ def vis(args):
             crop_preds.append(crop_pred)
         crop_preds = torch.cat(crop_preds, dim=0)
 
-        # splice them to the original size
         idx = 0
         pred_map = torch.zeros([b, 1, h, w]).to(device)
         for i in range(0, h, rh):
@@ -114,7 +104,6 @@ def vis(args):
                 gjs, gje = max(min(w - rw, j), 0), min(w, j + rw)
                 pred_map[:, :, gis:gie, gjs:gje] += crop_preds[idx]
                 idx += 1
-        # for the overlapping area, compute average value
         mask = crop_masks.sum(dim=0).unsqueeze(0)
         pred_map = pred_map / mask
         pred_map = pred_map.squeeze(0).squeeze(0).cpu().data.numpy()
@@ -144,13 +133,10 @@ if __name__ == "__main__":
     print("predmap count is %.2f, gt_dmap count is %.2f, gt count is %d"%(pred_map.sum(),gt_dmap.sum(),gt_count))
 
     vis_img = pred_map
-    # normalize density map values from 0 to 1, then map it to 0-255.
     vis_img = (vis_img - vis_img.min()) / (vis_img.max() - vis_img.min() + 1e-5)
     vis_img = (vis_img * 255).astype(np.uint8)
     vis_img = cv2.applyColorMap(vis_img, cv2.COLORMAP_JET)
     cv2.imwrite("%s/pred_map.png" % save_path, vis_img)
-
-    # plt.imsave("%s/pred_map.png" % save_path, pred_map)
     plt.imsave("%s/gt_dmap.png" % save_path, gt_dmap, cmap = 'jet')
 
     print("the visual result saved in %s"%save_path)
